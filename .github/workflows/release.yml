@@ -1,0 +1,87 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+  #release:
+  #  types: [published]
+  #push:
+
+jobs:
+  build:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    strategy:
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: linux
+            goarch: arm
+            goarm: 7
+
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+          - goos: windows
+            goarch: 386
+
+    env:
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+      GOARM: ${{ matrix.goarm }}
+      CGO_ENABLED: 0
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          check-latest: true
+
+      - name: Build binary
+        run: |
+          go build -v \
+          -o build/ir-access_${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }}/ \
+          -trimpath -ldflags "-s -w -buildid= -X main.version=${{ github.ref }}" .
+
+      - name: Create ZIP archive
+        shell: bash
+        run: |
+          pushd ./build/ir-access_${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }} || exit 1
+          touch -mt $(date +%Y01010000) *
+          zip -9vr ../ir-access_${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }}.zip .
+          popd || exit 1
+          FILE=./build/ir-access_${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }}.zip
+          DGST=$FILE.dgst
+          for METHOD in {"md5","sha256","sha512"}
+          do
+            openssl dgst -$METHOD $FILE | sed 's/([^)]*)//g' >>$DGST
+          done
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: ir-access_${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }}_${{ env.GITHUB_SHA }}
+          path: ./build/ir-access_${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }}/*
+
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v2
+        if: github.event_name == 'release'
+        with:
+          file: ./build/ir-access_${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }}.zip*
+          tag: ${{ github.ref }}
+          file_glob: true

@@ -26,11 +26,14 @@ jobs:
     - name: Set timestamp
       run: echo "TIMESTAMP=$(date -u +"%H:%M %d-%m-%Y")" >> $GITHUB_ENV
 
-    - name: Run the Go Script
-      run: go run . -f -v
+    - name: Fetch IR prefixes
+      run: go run . --fetch-ir --verbose
+
+    - name: Fetch CN prefixes
+      run: go run . --fetch-cn --verbose
 
     - name: Commit
       uses: stefanzweifel/git-auto-commit-action@v5
       with:
         commit_message: "Update prefixes (auto-update) - ${{ env.TIMESTAMP }}"
-        file_pattern: 'ir_prefixes_v4.txt ir_prefixes_v6.txt'
+        file_pattern: 'ir_prefixes_v4.txt ir_prefixes_v6.txt cn_prefixes_v4.txt cn_prefixes_v6.txt'

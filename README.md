@@ -1,26 +1,21 @@
-# IR-Access
+# Prefix Fetcher
 
-**IR-Access** is a Go-based application designed to fetch Iranian IP prefixes and set up firewall rules using `nftables` to allow only Iranian traffic while keeping SSH access open.
+**Prefix Fetcher** is a Go-based tool for fetching country-specific IP prefixes from BGP data. Currently supports Iranian (IR) and Chinese (CN) IP prefixes.
 
 ## Features
 
-- Fetches Iranian IP prefixes from [bgp.tools](https://bgp.tools/table.jsonl)
-- Filters the IP prefixes based on predefined ASN numbers
-- Converts IPv4 prefixes to /24 blocks
-- Configures `nftables` to allow traffic only from Iran (except SSH)
-- Automated setup and verification
+- Fetches IP prefixes from [bgp.tools](https://bgp.tools/table.jsonl)
+- Filters prefixes by country-specific ASN numbers
+- Converts IPv4 prefixes to /24 blocks for efficient processing
+- Supports multiple countries (IR, CN) with clean separation
+- Concurrent processing for fast execution
+- Automatic retry logic with exponential backoff
 
 ## Prerequisites
 
-Ensure the following dependencies are installed on your system:
-
 - **Go (>=1.24)**
-- **nftables**
-- **sudo privileges** (for setup operation)
 
 ## Build
-
-0. Install [Golang](https://go.dev).
 
 1. Clone the repository:
 
@@ -37,48 +32,57 @@ Ensure the following dependencies are installed on your system:
 
 ## Usage
 
-Run the application with the following options:
-
 ```sh
-./ir-access [OPTIONS]
+./prefix-fetcher [OPTIONS]
 ```
 
 ### Available Options
 
-| Option   | Short Flag | Description                                                           |
-|----------|------------|-----------------------------------------------------------------------|
-| `--fetch` | `-f`       | Fetch all Iranian IP prefixes from bgp.tools.                        |
-| `--setup` | `-s`       | Set up nftables rules to allow Iran-only access (fetches prefixes).  |
-| `--help`  | `-h`       | Show help message.                                                   |
+| Option        | Short | Description                                    |
+|---------------|-------|------------------------------------------------|
+| `--fetch-ir`  |       | Fetch Iranian IP prefixes from bgp.tools      |
+| `--fetch-cn`  |       | Fetch Chinese IP prefixes from bgp.tools      |
+| `--verbose`   | `-v`  | Enable verbose logging                         |
+| `--version`   |       | Show version information                       |
 
 ### Examples
 
 - Fetch Iranian IP prefixes:
 
   ```sh
-  ./ir-access --fetch
+  ./prefix-fetcher --fetch-ir
   ```
 
-- Set up firewall rules to allow Iran-Only access (excluding SSH):
+- Fetch Chinese IP prefixes:
 
   ```sh
-  sudo ./ir-access --setup
+  ./prefix-fetcher --fetch-cn
   ```
 
-#### Note that for now, only Ubuntu _(>22)_ and Debian _(>12)_ are supported for the `-s` or `--setup` flag.
+- Fetch with verbose output:
+
+  ```sh
+  ./prefix-fetcher --fetch-ir --verbose
+  ```
+
+## Output Files
+
+The tool generates country-specific prefix files:
+
+**Iranian prefixes:**
+- `ir_prefixes_v4.txt` - IPv4 prefixes as /24 blocks
+- `ir_prefixes_v6.txt` - IPv6 prefixes
+
+**Chinese prefixes:**
+- `cn_prefixes_v4.txt` - IPv4 prefixes as /24 blocks  
+- `cn_prefixes_v6.txt` - IPv6 prefixes
 
 ## How It Works
 
-1. **Fetching Prefixes:**
-    - Downloads the IP prefix data from `bgp.tools`.
-    - Filters the prefixes based on specific ASN numbers.
-    - Saves IPv4 and IPv6 prefixes into respective text files.
-
-2. **Setting Up nftables:**
-    - Reads the stored prefix files.
-    - Detects the SSH port from `/etc/ssh/sshd_config`.
-    - Configures firewall rules to allow only Iranian traffic.
-    - Applies and verifies the nftables rules.
+1. **Downloads BGP Data:** Fetches the complete BGP routing table from bgp.tools
+2. **Filters by ASN:** Keeps only prefixes from country-specific Autonomous System Numbers
+3. **Processes IPv4:** Converts IPv4 prefixes to /24 blocks for consistency
+4. **Sorts and Saves:** Outputs clean, sorted prefix lists to text files
 
 ## License
 

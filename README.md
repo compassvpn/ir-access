@@ -1,6 +1,6 @@
 # Prefix Fetcher
 
-**Prefix Fetcher** is a Go-based tool for fetching country-specific IP prefixes from BGP data. Currently supports Iranian (IR) and Chinese (CN) IP prefixes.
+**Prefix Fetcher** is a Go-based tool for fetching country-specific IP prefixes from BGP data. Currently supports Iranian (IR) and Chinese (CN) IP prefixes with easy extensibility for additional countries.
 
 ## Features
 
@@ -20,8 +20,8 @@
 1. Clone the repository:
 
     ```sh
-    git clone https://github.com/compassvpn/ir-access.git
-    cd ir-access
+    git clone https://github.com/compassvpn/prefix-fetcher.git
+    cd prefix-fetcher
     ```
 
 2. Build the application:

@@ -5,72 +5,35 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
-	"runtime"
 
 	"github.com/carlmjohnson/versioninfo"
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
 
-	"ir-access/fetch"    // Import fetch package
-	"ir-access/nftables" // Import nftables package
+	"prefix-fetcher/fetch"
 )
 
-const appName = "ir-access"
+const appName = "prefix-fetcher"
 
-var version string = ""
-
-// Execute fetch operation
-// func fetch(l *slog.Logger) {
-// 	l.Info("fetching IP prefixes")
-// 	startFetchPrefixes(l)
-// }
-
-// Execute setup operation
-func setup(l *slog.Logger) error {
-	if runtime.GOOS != "linux" {
-		return fmt.Errorf("setup only works on linux")
-	}
-
-	_, err := exec.LookPath("nft")
-	if err != nil {
-		return fmt.Errorf("nft command not found")
-	}
-
-	_, err = exec.LookPath("systemctl")
-	if err != nil {
-		return fmt.Errorf("systemctl command not found")
-	}
-
-	l.Info("running fetch operation before setup...")
-	fetch.StartFetchPrefixes(l)          // Use fetch package
-	err = nftables.StartSetupNftables(l) // Use nftables package
-	if err != nil {
-		return err // Return the error from StartSetupNftables
-	}
-
-	return nil
-}
+var version string
 
 func main() {
-	// Define command-line flags
 	fs := ff.NewFlagSet(appName)
-	fetchFlag := fs.Bool('f', "fetch", "Fetch all Iranian IP prefixes from bgp.tools.")
-	setupFlag := fs.Bool('s', "setup", "Set up nftables rules to Iran-Access-Only except SSH port.")
-	verboseFlag := fs.Bool('v', "verbose", "Enable verbose logging")
-	versionFlag := fs.BoolLong("version", "displays version number")
+	fetchIR := fs.BoolLong("fetch-ir", "Fetch Iranian IP prefixes from bgp.tools")
+	fetchCN := fs.BoolLong("fetch-cn", "Fetch Chinese IP prefixes from bgp.tools")
+	verbose := fs.Bool('v', "verbose", "Enable verbose logging")
+	showVersion := fs.BoolLong("version", "Show version information")
 
-	err := ff.Parse(fs, os.Args[1:])
-	switch {
-	case errors.Is(err, ff.ErrHelp):
-		fmt.Fprintf(os.Stderr, "%s\n", ffhelp.Flags(fs))
-		os.Exit(0)
-	case err != nil:
+	if err := ff.Parse(fs, os.Args[1:]); err != nil {
+		if errors.Is(err, ff.ErrHelp) {
+			fmt.Fprintf(os.Stderr, "%s\n", ffhelp.Flags(fs))
+			os.Exit(0)
+		}
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
-	if *versionFlag {
+	if *showVersion {
 		if version == "" {
 			version = versioninfo.Short()
 		}
@@ -78,28 +41,24 @@ func main() {
 		os.Exit(0)
 	}
 
-	l := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	if *verboseFlag {
-		l = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	}
+	logger := createLogger(*verbose)
 
-	// Execute operations based on flags
 	switch {
-	case *setupFlag:
-		if err := setup(l); err != nil {
-			fatal(l, err)
-		}
-	case *fetchFlag:
-		// fetch(l) // Old call
-		fetch.StartFetchPrefixes(l) // Use fetch package directly
+	case *fetchIR:
+		fetch.FetchIR(logger)
+	case *fetchCN:
+		fetch.FetchCN(logger)
 	default:
-		fmt.Fprintf(os.Stderr, "error: invalid or missing options\n")
+		fmt.Fprintf(os.Stderr, "error: specify --fetch-ir or --fetch-cn\n")
 		fmt.Fprintf(os.Stderr, "%s\n", ffhelp.Flags(fs))
 		os.Exit(1)
 	}
 }
 
-func fatal(l *slog.Logger, err error) {
-	l.Error(err.Error())
-	os.Exit(1)
+func createLogger(verbose bool) *slog.Logger {
+	opts := &slog.HandlerOptions{Level: slog.LevelInfo}
+	if verbose {
+		opts.Level = slog.LevelDebug
+	}
+	return slog.New(slog.NewTextHandler(os.Stdout, opts))
 }

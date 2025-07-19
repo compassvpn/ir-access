@@ -16,131 +16,194 @@ import (
 )
 
 const (
-	Url          = "https://bgp.tools/table.jsonl"
-	UserAgent    = "irgfw bgp.tools - contact@irgfw.report"
-	OutputFileV4 = "ir_prefixes_v4.txt"
-	OutputFileV6 = "ir_prefixes_v6.txt"
-	Retries      = 4
+	bgpToolsURL = "https://bgp.tools/table.jsonl"
+	userAgent   = "prefix-fetcher bgp.tools"
+	maxRetries  = 4
+	retryDelay  = 2 * time.Second
 )
 
-// Prefix structure for JSON parsing
+// Config holds country-specific fetch settings.
+type Config struct {
+	Country      string
+	ASNFunc      func() []int
+	OutputFileV4 string
+	OutputFileV6 string
+}
+
+// Prefix represents a BGP route with its ASN.
 type Prefix struct {
 	CIDR netip.Prefix `json:"CIDR"`
 	ASN  int          `json:"ASN"`
 }
 
-// Fetch prefixes with retry logic
-func fetchPrefixesWithRetry(l *slog.Logger, url string, client *http.Client, retries int) ([]Prefix, error) {
-	var prefixes []Prefix
-	var err error
-	for i := 0; i < retries; i++ {
-		prefixes, err = fetchPrefixes(l, url, client)
+// Gets Iranian IP prefixes.
+func FetchIR(l *slog.Logger) {
+	config := Config{
+		Country:      "IR",
+		ASNFunc:      IRASN,
+		OutputFileV4: "ir_prefixes_v4.txt",
+		OutputFileV6: "ir_prefixes_v6.txt",
+	}
+	fetchPrefixesForCountry(l, config)
+}
+
+// Gets Chinese IP prefixes.
+func FetchCN(l *slog.Logger) {
+	config := Config{
+		Country:      "CN",
+		ASNFunc:      CNASN,
+		OutputFileV4: "cn_prefixes_v4.txt",
+		OutputFileV6: "cn_prefixes_v6.txt",
+	}
+	fetchPrefixesForCountry(l, config)
+}
+
+// Does the complete fetch workflow.
+func fetchPrefixesForCountry(l *slog.Logger, cfg Config) {
+	asns := cfg.ASNFunc()
+	l.Info("fetching prefixes", "country", cfg.Country, "asn_count", len(asns))
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	prefixes, err := fetchWithRetry(l, client)
+	if err != nil {
+		l.Error("fetch failed", "error", err)
+		return
+	}
+
+	v4Prefixes, v6Prefixes := filterByASN(prefixes, asns)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		if err := writeV4Prefixes(l, v4Prefixes, cfg.OutputFileV4); err != nil {
+			l.Error("write IPv4 failed", "error", err)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		if err := writeV6Prefixes(l, v6Prefixes, cfg.OutputFileV6); err != nil {
+			l.Error("write IPv6 failed", "error", err)
+		}
+	}()
+
+	wg.Wait()
+	l.Info("fetch complete", "country", cfg.Country)
+}
+
+// Tries multiple times with backoff.
+func fetchWithRetry(l *slog.Logger, client *http.Client) ([]Prefix, error) {
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		prefixes, err := fetchPrefixes(l, client)
 		if err == nil {
 			return prefixes, nil
 		}
-		l.Warn("fetch failed", "attempt", i+1, "max", retries, "error", err)
-		time.Sleep(2 * time.Second) // Backoff between retries
+
+		lastErr = err
+		if attempt < maxRetries {
+			delay := time.Duration(attempt) * retryDelay
+			l.Warn("fetch retry", "attempt", attempt, "delay", delay, "error", err)
+			time.Sleep(delay)
+		}
 	}
-	return nil, fmt.Errorf("all fetch attempts failed: %w", err)
+
+	return nil, fmt.Errorf("all %d attempts failed: %w", maxRetries, lastErr)
 }
 
-// Fetches prefixes from the URL
-func fetchPrefixes(l *slog.Logger, url string, client *http.Client) ([]Prefix, error) {
-	req, err := http.NewRequest("GET", url, nil)
+// Downloads BGP data from bgp.tools.
+func fetchPrefixes(l *slog.Logger, client *http.Client) ([]Prefix, error) {
+	req, err := http.NewRequest("GET", bgpToolsURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
-	req.Header.Set("User-Agent", UserAgent)
+	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("making request: %w", err)
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("received non-200 status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
 	}
 
 	var prefixes []Prefix
 	scanner := bufio.NewScanner(resp.Body)
+
 	for scanner.Scan() {
 		var prefix Prefix
 		if err := json.Unmarshal(scanner.Bytes(), &prefix); err != nil {
-			l.Warn("skipping invalid JSON line", "error", err)
+			l.Debug("invalid JSON line", "error", err)
 			continue
 		}
 		prefixes = append(prefixes, prefix)
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("reading response body: %w", err)
+		return nil, fmt.Errorf("scan failed: %w", err)
 	}
 
 	return prefixes, nil
 }
 
-// Filters prefixes by ASN
-func filterPrefixesByASN(prefixes []Prefix, asns []int) ([]netip.Prefix, []netip.Prefix) {
-	asnSet := make(map[int]struct{})
+// Keeps only prefixes from target ASNs.
+func filterByASN(prefixes []Prefix, asns []int) ([]netip.Prefix, []netip.Prefix) {
+	asnSet := make(map[int]struct{}, len(asns))
 	for _, asn := range asns {
 		asnSet[asn] = struct{}{}
 	}
 
-	var v4Prefixes, v6Prefixes []netip.Prefix
+	var v4, v6 []netip.Prefix
 	for _, prefix := range prefixes {
-		if _, exists := asnSet[prefix.ASN]; exists {
-			if prefix.CIDR.Addr().Is4() {
-				v4Prefixes = append(v4Prefixes, prefix.CIDR)
-			} else if prefix.CIDR.Addr().Is6() {
-				v6Prefixes = append(v6Prefixes, prefix.CIDR)
-			}
+		if _, exists := asnSet[prefix.ASN]; !exists {
+			continue
+		}
+
+		if prefix.CIDR.Addr().Is4() {
+			v4 = append(v4, prefix.CIDR)
+		} else if prefix.CIDR.Addr().Is6() {
+			v6 = append(v6, prefix.CIDR)
 		}
 	}
 
-	return v4Prefixes, v6Prefixes
+	return v4, v6
 }
 
-// Converts IPv4 prefixes to /24 blocks and writes them to a channel
-func processPrefixTo24(prefix netip.Prefix) []netip.Prefix {
-	ip := prefix.Addr()
-	prefixLen := prefix.Bits()
-
-	if prefixLen == 24 {
+// Converts prefixes to /24 blocks.
+func splitToBlocks(prefix netip.Prefix) []netip.Prefix {
+	if prefix.Bits() == 24 {
 		return []netip.Prefix{prefix}
 	}
 
-	ipInt := ipToInt(ip)
-	numBlocks := 1 << (24 - prefixLen) // Calculate the number of /24 blocks
-	splitPrefixes := make([]netip.Prefix, numBlocks)
-	for i := 0; i < numBlocks; i++ {
+	ipInt := ipToInt(prefix.Addr())
+	blockCount := 1 << (24 - prefix.Bits())
+	blocks := make([]netip.Prefix, blockCount)
+
+	for i := 0; i < blockCount; i++ {
 		ip := intToIP(ipInt)
-		splitPrefixes[i] = netip.PrefixFrom(ip, 24)
-		incrementIPBy24(ipInt)
+		blocks[i] = netip.PrefixFrom(ip, 24)
+		ipInt.Add(ipInt, big.NewInt(256))
 	}
 
-	return splitPrefixes
+	return blocks
 }
 
 func ipToInt(ip netip.Addr) *big.Int {
-	ipInt := big.NewInt(0)
-	ipInt.SetBytes(ip.AsSlice())
-	return ipInt
+	return big.NewInt(0).SetBytes(ip.AsSlice())
 }
 
 func intToIP(ipInt *big.Int) netip.Addr {
-	ipBytes := make([]byte, 4)
-	ipInt.FillBytes(ipBytes)
-	ip, _ := netip.AddrFromSlice(ipBytes)
+	bytes := make([]byte, 4)
+	ipInt.FillBytes(bytes)
+	ip, _ := netip.AddrFromSlice(bytes)
 	return ip
 }
 
-func incrementIPBy24(ipInt *big.Int) {
-	increment := big.NewInt(1 << 8) // 256 for /24
-	ipInt.Add(ipInt, increment)
-}
-
-// https://cs.opensource.google/go/go/+/refs/tags/go1.23.5:src/net/netip/netip.go;l=1312
 func prefixCompare(a, b netip.Prefix) int {
 	if c := cmp.Compare(a.Addr().BitLen(), b.Addr().BitLen()); c != 0 {
 		return c
@@ -151,106 +214,60 @@ func prefixCompare(a, b netip.Prefix) int {
 	return a.Addr().Compare(b.Addr())
 }
 
-// Writes sorted prefixes to a file
-func writePrefixesToFileV4(l *slog.Logger, prefixes []netip.Prefix, outputFile string) error {
+// Saves IPv4 prefixes as /24 blocks.
+func writeV4Prefixes(l *slog.Logger, prefixes []netip.Prefix, filename string) error {
 	if len(prefixes) == 0 {
-		l.Info("no prefixes to write", "family", "v4")
+		l.Info("no IPv4 prefixes")
 		return nil
 	}
 
-	outFile, err := os.Create(outputFile)
-	if err != nil {
-		return fmt.Errorf("creating output file: %w", err)
-	}
-	defer outFile.Close()
-
-	writer := bufio.NewWriter(outFile)
-	defer writer.Flush()
-
-	uniquePrefixes := make(map[netip.Prefix]struct{})
+	uniqueBlocks := make(map[netip.Prefix]struct{})
 	for _, prefix := range prefixes {
-		split := processPrefixTo24(prefix)
-		for _, p := range split {
-			uniquePrefixes[p] = struct{}{}
+		for _, block := range splitToBlocks(prefix) {
+			uniqueBlocks[block] = struct{}{}
 		}
 	}
 
-	sortedPrefixes := make([]netip.Prefix, 0, len(uniquePrefixes))
-	for prefix := range uniquePrefixes {
-		sortedPrefixes = append(sortedPrefixes, prefix)
+	sortedBlocks := make([]netip.Prefix, 0, len(uniqueBlocks))
+	for block := range uniqueBlocks {
+		sortedBlocks = append(sortedBlocks, block)
 	}
+	slices.SortFunc(sortedBlocks, prefixCompare)
 
-	slices.SortFunc(sortedPrefixes, prefixCompare)
-	for _, prefix := range sortedPrefixes {
-		if _, err := writer.WriteString(prefix.String() + "\n"); err != nil {
-			return fmt.Errorf("writing to file: %w", err)
-		}
-	}
-
-	l.Info("wrote IPv4 /24 prefixes to file", "count", len(sortedPrefixes), "file", outputFile)
-	return nil
+	return writeToFile(l, sortedBlocks, filename, "IPv4")
 }
 
-// Writes IPv6 prefixes to a file without modification
-func writePrefixesToFileV6(l *slog.Logger, prefixes []netip.Prefix, outputFile string) error {
+// Saves IPv6 prefixes unchanged.
+func writeV6Prefixes(l *slog.Logger, prefixes []netip.Prefix, filename string) error {
 	if len(prefixes) == 0 {
-		l.Info("no prefixes to write", "family", "v6")
+		l.Info("no IPv6 prefixes")
 		return nil
 	}
 
-	outFile, err := os.Create(outputFile)
-	if err != nil {
-		return fmt.Errorf("creating output file: %w", err)
-	}
-	defer outFile.Close()
+	sorted := make([]netip.Prefix, len(prefixes))
+	copy(sorted, prefixes)
+	slices.SortFunc(sorted, prefixCompare)
 
-	writer := bufio.NewWriter(outFile)
-	defer writer.Flush()
-
-	sortedPrefixes := make([]netip.Prefix, len(prefixes))
-	copy(sortedPrefixes, prefixes)
-	slices.SortFunc(sortedPrefixes, prefixCompare)
-
-	for _, prefix := range sortedPrefixes {
-		if _, err := writer.WriteString(prefix.String() + "\n"); err != nil {
-			return fmt.Errorf("writing to file: %w", err)
-		}
-	}
-
-	l.Info("wrote IPv6 prefixes to file", "count", len(sortedPrefixes), "file", outputFile)
-	return nil
+	return writeToFile(l, sorted, filename, "IPv6")
 }
 
-// StartFetchPrefixes is the main entry point for fetching and processing prefixes.
-func StartFetchPrefixes(l *slog.Logger) {
-	l.Info("starting processing for ASNs", "asns", AsnsToFilter())
-
-	client := &http.Client{}
-	prefixes, err := fetchPrefixesWithRetry(l, Url, client, Retries)
+// Saves prefixes to disk.
+func writeToFile(l *slog.Logger, prefixes []netip.Prefix, filename, family string) error {
+	file, err := os.Create(filename)
 	if err != nil {
-		l.Error("fetching prefixes failed", "error", err)
-		return
+		return fmt.Errorf("create file: %w", err)
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+	defer writer.Flush()
+
+	for _, prefix := range prefixes {
+		if _, err := writer.WriteString(prefix.String() + "\n"); err != nil {
+			return fmt.Errorf("write failed: %w", err)
+		}
 	}
 
-	v4Prefixes, v6Prefixes := filterPrefixesByASN(prefixes, AsnsToFilter())
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		if err := writePrefixesToFileV4(l, v4Prefixes, OutputFileV4); err != nil {
-			l.Error("writing IPv4 prefixes", "error", err)
-		}
-	}()
-
-	go func() {
-		defer wg.Done()
-		if err := writePrefixesToFileV6(l, v6Prefixes, OutputFileV6); err != nil {
-			l.Error("writing IPv6 prefixes", "error", err)
-		}
-	}()
-
-	wg.Wait()
-	l.Info("prefix fetching and writing complete")
+	l.Info("prefixes written", "family", family, "count", len(prefixes), "file", filename)
+	return nil
 }

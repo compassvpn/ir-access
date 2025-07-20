@@ -23,6 +23,9 @@ jobs:
         go-version: '1.24'
         check-latest: true
 
+    - name: Download Go modules
+      run: go mod download
+
     - name: Set timestamp
       run: echo "TIMESTAMP=$(date -u +"%H:%M %d-%m-%Y")" >> $GITHUB_ENV
 

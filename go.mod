@@ -1,6 +1,6 @@
-module ir-access
+module prefix-fetcher
 
-go 1.24.2
+go 1.24.5
 
 require (
 	github.com/carlmjohnson/versioninfo v0.22.5

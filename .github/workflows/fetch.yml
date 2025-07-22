@@ -38,5 +38,5 @@ jobs:
     - name: Commit
       uses: stefanzweifel/git-auto-commit-action@v5
       with:
-        commit_message: "Update prefixes (auto-update) - ${{ env.TIMESTAMP }}"
+        commit_message: "Auto-Update - ${{ env.TIMESTAMP }}"
         file_pattern: 'ir_prefixes_v4.txt ir_prefixes_v6.txt cn_prefixes_v4.txt cn_prefixes_v6.txt'

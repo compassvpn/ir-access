@@ -1,6 +1,12 @@
 name: Fetch And Commit
 
 on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
   schedule:
     - cron: '0 0 * * *' # Run daily at midnight (UTC)
   workflow_dispatch:
@@ -28,16 +34,16 @@ jobs:
       
     - name: Tidy Go modules
       run: go mod tidy
-        
-    - name: Set timestamp
-      run: echo "TIMESTAMP=$(date -u +"%H:%M %d-%m-%Y")" >> $GITHUB_ENV
 
     - name: Fetch IR prefixes
       run: go run . --fetch-ir --verbose
 
     - name: Fetch CN prefixes
       run: go run . --fetch-cn --verbose
-
+      
+    - name: Set timestamp
+      run: echo "TIMESTAMP=$(date -u +"%H:%M %d-%m-%Y")" >> $GITHUB_ENV
+      
     - name: Commit
       uses: stefanzweifel/git-auto-commit-action@v6
       with:

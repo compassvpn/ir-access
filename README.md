@@ -1,13 +1,13 @@
 # Prefix Fetcher
 
-**Prefix Fetcher** is a Go-based tool for fetching country-specific IP prefixes from BGP data. Currently supports Iranian (IR) and Chinese (CN) IP prefixes with easy extensibility for additional countries.
+**Prefix Fetcher** is a Go-based tool for fetching country-specific IP prefixes from BGP data. Currently supports Iranian (IR), Chinese (CN), and Russian (RU) IP prefixes with easy extensibility for additional countries.
 
 ## Features
 
 - Fetches IP prefixes from [bgp.tools](https://bgp.tools/table.jsonl)
 - Filters prefixes by country-specific ASN numbers
 - Converts IPv4 prefixes to /24 blocks for efficient processing
-- Supports multiple countries (IR, CN) with clean separation
+- Supports multiple countries (IR, CN, RU) with clean separation
 - Concurrent processing for fast execution
 - Automatic retry logic with exponential backoff
 
@@ -42,6 +42,7 @@
 |---------------|-------|------------------------------------------------|
 | `--fetch-ir`  |       | Fetch Iranian IP prefixes from bgp.tools      |
 | `--fetch-cn`  |       | Fetch Chinese IP prefixes from bgp.tools      |
+| `--fetch-ru`  |       | Fetch Russian IP prefixes from bgp.tools      |
 | `--verbose`   | `-v`  | Enable verbose logging                         |
 | `--version`   |       | Show version information                       |
 
@@ -57,6 +58,12 @@
 
   ```sh
   ./prefix-fetcher --fetch-cn
+  ```
+
+- Fetch Russian IP prefixes:
+
+  ```sh
+  ./prefix-fetcher --fetch-ru
   ```
 
 - Fetch with verbose output:
@@ -76,6 +83,10 @@ The tool generates country-specific prefix files:
 **Chinese prefixes:**
 - `cn_prefixes_v4.txt` - IPv4 prefixes as /24 blocks  
 - `cn_prefixes_v6.txt` - IPv6 prefixes
+
+**Russian prefixes:**
+- `ru_prefixes_v4.txt` - IPv4 prefixes as /24 blocks
+- `ru_prefixes_v6.txt` - IPv6 prefixes
 
 ## How It Works
 

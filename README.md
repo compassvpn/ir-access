@@ -7,11 +7,14 @@
 - **Dynamic ASN Fetching**: Automatically downloads the latest ASN allocations from RIR delegated files
   - Iran (IR): Uses RIPE NCC delegated data
   - China (CN): Uses APNIC delegated data
+  - Russia (RU): Uses RIPE NCC delegated data
+- **Comprehensive Coverage**: Fetches from all RIRs for complete ASN discovery
 - **BGP Data**: Fetches IP prefixes from [bgp.tools](https://bgp.tools/table.jsonl)
 - **IPv4 /24 Blocks**: Converts IPv4 prefixes to /24 blocks for efficient processing
 - **IPv6 Preservation**: Keeps IPv6 prefixes in their original format
 - **Clean & Simple**: No caching, fresh data on every run
 - **Automatic retry logic** with exponential backoff
+- **Duplicate removal**: Automatically deduplicates ASNs found across multiple RIRs
 
 ## Prerequisites
 
@@ -44,6 +47,7 @@
 |---------------|------------------------------------------------|
 | `--fetch-ir`  | Fetch Iranian IP prefixes                      |
 | `--fetch-cn`  | Fetch Chinese IP prefixes                      |
+| `--fetch-ru`  | Fetch Russian IP prefixes                      |
 | `-h, --help`  | Show help information                          |
 
 ### Examples
@@ -60,10 +64,16 @@
   ./prefix-fetcher --fetch-cn
   ```
 
-- Fetch both countries:
+- Fetch Russian IP prefixes:
 
   ```sh
-  ./prefix-fetcher --fetch-ir --fetch-cn
+  ./prefix-fetcher --fetch-ru
+  ```
+
+- Fetch multiple countries:
+
+  ```sh
+  ./prefix-fetcher --fetch-ir --fetch-cn --fetch-ru
   ```
 
 - Show help:
@@ -84,11 +94,16 @@ The tool generates country-specific prefix files:
 - `cn_prefixes_v4.txt` - IPv4 prefixes as /24 blocks  
 - `cn_prefixes_v6.txt` - IPv6 prefixes
 
+**Russian prefixes:**
+- `ru_prefixes_v4.txt` - IPv4 prefixes as /24 blocks
+- `ru_prefixes_v6.txt` - IPv6 prefixes
+
 ## How It Works
 
-1. **Fetches ASN Lists**: Downloads the latest ASN allocations from the appropriate RIR:
-   - **Iran**: RIPE NCC (`delegated-ripencc-latest`)
-   - **China**: APNIC (`delegated-apnic-latest`)
+1. **Fetches ASN Lists**: Downloads the latest ASN allocations from all RIRs for comprehensive coverage:
+   - **Iran**: Primary coverage from RIPE NCC, with additional checks across all RIRs
+   - **China**: Primary coverage from APNIC, with additional checks across all RIRs
+   - **Russia**: Primary coverage from RIPE NCC, with additional checks across all RIRs
 2. **Downloads BGP Data**: Fetches the complete BGP routing table from bgp.tools
 3. **Filters by ASN**: Keeps only prefixes from the dynamically fetched ASN lists
 4. **Processes IPv4**: Converts IPv4 prefixes to /24 blocks for consistency
@@ -97,8 +112,9 @@ The tool generates country-specific prefix files:
 ## Data Sources
 
 - **RIR Delegated Files**: 
-  - Iran: [RIPE NCC](https://ftp.ripe.net/ripe/stats/delegated-ripencc-latest)
-  - China: [APNIC](https://ftp.apnic.net/stats/apnic/delegated-apnic-latest)
+  - Iran: [RIPE NCC](https://ftp.ripe.net/ripe/stats/delegated-ripencc-latest) (+ all other RIRs)
+  - China: [APNIC](https://ftp.apnic.net/stats/apnic/delegated-apnic-latest) (+ all other RIRs)
+  - Russia: [RIPE NCC](https://ftp.ripe.net/ripe/stats/delegated-ripencc-latest) (+ all other RIRs)
 - **BGP Data**: [bgp.tools](https://bgp.tools/table.jsonl)
 
 ## License

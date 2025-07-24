@@ -19,13 +19,13 @@ const (
 	retryDelay  = 1 * time.Second
 )
 
-// Prefix represents a BGP route with its ASN.
+// BGP route entry with its announcing ASN.
 type Prefix struct {
 	CIDR netip.Prefix `json:"CIDR"`
 	ASN  int          `json:"ASN"`
 }
 
-// fetchWithRetrySimple fetches BGP data with retry logic
+// Downloads the full BGP table with exponential backoff on failures.
 func fetchWithRetrySimple(client *http.Client) ([]Prefix, error) {
 	var lastErr error
 
@@ -45,7 +45,7 @@ func fetchWithRetrySimple(client *http.Client) ([]Prefix, error) {
 	return nil, fmt.Errorf("all %d attempts failed: %w", maxRetries, lastErr)
 }
 
-// fetchPrefixesSimple fetches BGP data without logger dependency
+// Streams and parses JSONL BGP data from bgp.tools.
 func fetchPrefixesSimple(client *http.Client) ([]Prefix, error) {
 	req, err := http.NewRequest("GET", bgpToolsURL, nil)
 	if err != nil {
@@ -87,7 +87,7 @@ func fetchPrefixesSimple(client *http.Client) ([]Prefix, error) {
 	return prefixes, nil
 }
 
-// filterByASN filters prefixes by ASN and separates IPv4/IPv6
+// Extracts prefixes announced by target ASNs and sorts by IP family.
 func filterByASN(prefixes []Prefix, asns []int) ([]netip.Prefix, []netip.Prefix) {
 	asnSet := make(map[int]bool)
 	for _, asn := range asns {
@@ -108,14 +108,13 @@ func filterByASN(prefixes []Prefix, asns []int) ([]netip.Prefix, []netip.Prefix)
 		}
 	}
 
-	// Sort prefixes for consistent output
 	slices.SortFunc(v4, prefixCompare)
 	slices.SortFunc(v6, prefixCompare)
 
 	return v4, v6
 }
 
-// prefixCompare compares two netip.Prefix for sorting
+// Comparison for deterministic prefix ordering.
 func prefixCompare(a, b netip.Prefix) int {
 	if c := cmp.Compare(a.Addr().BitLen(), b.Addr().BitLen()); c != 0 {
 		return c

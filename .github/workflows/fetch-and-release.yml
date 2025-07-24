@@ -36,12 +36,12 @@ jobs:
       - name: Set release variables
         run: |
           echo "RELEASE_TAG=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
-          echo "RELEASE_NAME=Prefixes Update $(date -u +"%Y-%m-%d %H:%M UTC")" >> $GITHUB_ENV
+          echo "RELEASE_DATE=$(date -u +'%A %F %T %Z')" >> $GITHUB_ENV
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ env.RELEASE_NAME }}
+          name: ${{ env.RELEASE_TAG }}
           tag_name: ${{ env.RELEASE_TAG }}
           draft: false
           prerelease: false

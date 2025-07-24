@@ -1,64 +1,90 @@
 package main
 
 import (
-	"errors"
+	"flag"
 	"fmt"
-	"log/slog"
+	"log"
 	"os"
-
-	"github.com/carlmjohnson/versioninfo"
-	"github.com/peterbourgon/ff/v4"
-	"github.com/peterbourgon/ff/v4/ffhelp"
 
 	"prefix-fetcher/fetch"
 )
 
-const appName = "prefix-fetcher"
-
-var version string
-
 func main() {
-	fs := ff.NewFlagSet(appName)
-	fetchIR := fs.BoolLong("fetch-ir", "Fetch Iranian IP prefixes from bgp.tools")
-	fetchCN := fs.BoolLong("fetch-cn", "Fetch Chinese IP prefixes from bgp.tools")
-	verbose := fs.Bool('v', "verbose", "Enable verbose logging")
-	showVersion := fs.BoolLong("version", "Show version information")
+	var (
+		fetchIR  = flag.Bool("fetch-ir", false, "Fetch IP prefixes for Iran (IR)")
+		fetchCN  = flag.Bool("fetch-cn", false, "Fetch IP prefixes for China (CN)")
+		help     = flag.Bool("h", false, "Show help")
+		helpLong = flag.Bool("help", false, "Show help")
+	)
+	flag.Parse()
 
-	if err := ff.Parse(fs, os.Args[1:]); err != nil {
-		if errors.Is(err, ff.ErrHelp) {
-			fmt.Fprintf(os.Stderr, "%s\n", ffhelp.Flags(fs))
-			os.Exit(0)
-		}
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+	if *help || *helpLong {
+		showHelp()
+		return
+	}
+
+	if !*fetchIR && !*fetchCN {
+		fmt.Fprintf(os.Stderr, "Error: Please specify either --fetch-ir or --fetch-cn\n\n")
+		showHelp()
 		os.Exit(1)
 	}
 
-	if *showVersion {
-		if version == "" {
-			version = versioninfo.Short()
+	if *fetchIR {
+		if err := fetchAndSavePrefixes("IR"); err != nil {
+			log.Fatalf("Failed to fetch Iran prefixes: %v", err)
 		}
-		fmt.Fprintf(os.Stderr, "%s\n", version)
-		os.Exit(0)
 	}
 
-	logger := createLogger(*verbose)
-
-	switch {
-	case *fetchIR:
-		fetch.FetchIR(logger)
-	case *fetchCN:
-		fetch.FetchCN(logger)
-	default:
-		fmt.Fprintf(os.Stderr, "error: specify --fetch-ir or --fetch-cn\n")
-		fmt.Fprintf(os.Stderr, "%s\n", ffhelp.Flags(fs))
-		os.Exit(1)
+	if *fetchCN {
+		if err := fetchAndSavePrefixes("CN"); err != nil {
+			log.Fatalf("Failed to fetch China prefixes: %v", err)
+		}
 	}
 }
 
-func createLogger(verbose bool) *slog.Logger {
-	opts := &slog.HandlerOptions{Level: slog.LevelInfo}
-	if verbose {
-		opts.Level = slog.LevelDebug
+// fetchAndSavePrefixes fetches ASNs and prefixes for a country and saves to files
+func fetchAndSavePrefixes(country string) error {
+	fmt.Printf("Fetching prefixes for %s...\n", country)
+
+	// Get ASNs from RIR
+	asns, err := fetch.GetASNsForCountry(country)
+	if err != nil {
+		return fmt.Errorf("failed to get ASNs: %w", err)
 	}
-	return slog.New(slog.NewTextHandler(os.Stdout, opts))
+
+	fmt.Printf("Found %d ASNs for %s\n", len(asns), country)
+
+	// Fetch BGP prefixes
+	prefixes, err := fetch.GetPrefixesForASNs(asns)
+	if err != nil {
+		return fmt.Errorf("failed to get prefixes: %w", err)
+	}
+
+	fmt.Printf("Found %d IPv4 and %d IPv6 prefixes\n", len(prefixes.IPv4), len(prefixes.IPv6))
+
+	// Save to files
+	if err := fetch.SavePrefixesToFiles(country, prefixes); err != nil {
+		return fmt.Errorf("failed to save prefixes: %w", err)
+	}
+
+	fmt.Printf("Prefixes saved successfully\n")
+	return nil
+}
+
+func showHelp() {
+	fmt.Println("prefix-fetcher - Fetch IP prefixes for countries")
+	fmt.Println()
+	fmt.Println("Usage:")
+	fmt.Println("  ./prefix-fetcher --fetch-ir   Fetch prefixes for Iran")
+	fmt.Println("  ./prefix-fetcher --fetch-cn   Fetch prefixes for China")
+	fmt.Println("  ./prefix-fetcher -h, --help   Show this help")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  ./prefix-fetcher --fetch-ir")
+	fmt.Println("  ./prefix-fetcher --fetch-cn")
+	fmt.Println("  ./prefix-fetcher --fetch-ir --fetch-cn")
+	fmt.Println()
+	fmt.Println("Output files:")
+	fmt.Println("  ir_prefixes_v4.txt, ir_prefixes_v6.txt")
+	fmt.Println("  cn_prefixes_v4.txt, cn_prefixes_v6.txt")
 }

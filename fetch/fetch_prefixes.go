@@ -17,9 +17,9 @@ import (
 
 const (
 	bgpToolsURL = "https://bgp.tools/table.jsonl"
-	userAgent   = "prefix-fetcher bgp.tools"
+	userAgent   = "compassvpn-prefix-fetcher bgp.tools"
 	maxRetries  = 4
-	retryDelay  = 2 * time.Second
+	retryDelay  = 1 * time.Second
 )
 
 // Config holds country-specific fetch settings.

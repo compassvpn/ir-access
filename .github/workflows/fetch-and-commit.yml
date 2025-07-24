@@ -1,45 +1,62 @@
-name: Fetch And Commit
+name: Fetch and Release Prefixes
 
 on:
-  schedule:
-    - cron: '0 0 * * *' # Run daily at midnight (UTC)
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *' # Daily at midnight UTC
 
 jobs:
-  fetch-and-commit:
+  fetch-and-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      CGO_ENABLED: 0
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.24.5'
-        check-latest: true
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.5'
+          check-latest: true
 
-    - name: Download Go modules
-      run: go mod download
-      
-    - name: Tidy Go modules
-      run: go mod tidy
+      - name: Download Go modules
+        run: go mod download
 
-    - name: Fetch IR prefixes
-      run: go run . --fetch-ir --verbose
+      - name: Tidy Go modules
+        run: go mod tidy
 
-    - name: Fetch CN prefixes
-      run: go run . --fetch-cn --verbose
-      
-    - name: Set timestamp
-      run: echo "TIMESTAMP=$(date -u +"%H:%M %d-%m-%Y")" >> $GITHUB_ENV
-      
-    - name: Commit
-      uses: stefanzweifel/git-auto-commit-action@v6
-      with:
-        commit_message: "Auto-Update - (${{ env.TIMESTAMP }})"
-        file_pattern: 'ir_prefixes_v4.txt ir_prefixes_v6.txt cn_prefixes_v4.txt cn_prefixes_v6.txt'
+      - name: Fetch IR prefixes
+        run: go run . --fetch-ir --verbose
+
+      - name: Fetch CN prefixes
+        run: go run . --fetch-cn --verbose
+
+      - name: Set release variables
+        run: |
+          echo "RELEASE_TAG=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
+          echo "RELEASE_NAME=Prefixes Update $(date -u +"%Y-%m-%d %H:%M UTC")" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ env.RELEASE_NAME }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          draft: false
+          prerelease: false
+          files: |
+            ir_prefixes_v4.txt
+            ir_prefixes_v6.txt
+            cn_prefixes_v4.txt
+            cn_prefixes_v6.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clean older releases
+        uses: dev-drprasad/delete-older-releases@v0.3.4
+        with:
+          keep_latest: 30
+          delete_tags: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

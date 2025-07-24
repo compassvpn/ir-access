@@ -13,6 +13,7 @@ func main() {
 	var (
 		fetchIR  = flag.Bool("fetch-ir", false, "Fetch IP prefixes for Iran (IR)")
 		fetchCN  = flag.Bool("fetch-cn", false, "Fetch IP prefixes for China (CN)")
+		fetchRU  = flag.Bool("fetch-ru", false, "Fetch IP prefixes for Russia (RU)")
 		help     = flag.Bool("h", false, "Show help")
 		helpLong = flag.Bool("help", false, "Show help")
 	)
@@ -23,8 +24,8 @@ func main() {
 		return
 	}
 
-	if !*fetchIR && !*fetchCN {
-		fmt.Fprintf(os.Stderr, "Error: Please specify either --fetch-ir or --fetch-cn\n\n")
+	if !*fetchIR && !*fetchCN && !*fetchRU {
+		fmt.Fprintf(os.Stderr, "Error: Please specify one of --fetch-ir, --fetch-cn, or --fetch-ru\n\n")
 		showHelp()
 		os.Exit(1)
 	}
@@ -38,6 +39,12 @@ func main() {
 	if *fetchCN {
 		if err := fetchAndSavePrefixes("CN"); err != nil {
 			log.Fatalf("Failed to fetch China prefixes: %v", err)
+		}
+	}
+
+	if *fetchRU {
+		if err := fetchAndSavePrefixes("RU"); err != nil {
+			log.Fatalf("Failed to fetch Russia prefixes: %v", err)
 		}
 	}
 }
@@ -77,14 +84,11 @@ func showHelp() {
 	fmt.Println("Usage:")
 	fmt.Println("  ./prefix-fetcher --fetch-ir   Fetch prefixes for Iran")
 	fmt.Println("  ./prefix-fetcher --fetch-cn   Fetch prefixes for China")
+	fmt.Println("  ./prefix-fetcher --fetch-ru   Fetch prefixes for Russia")
 	fmt.Println("  ./prefix-fetcher -h, --help   Show this help")
-	fmt.Println()
-	fmt.Println("Examples:")
-	fmt.Println("  ./prefix-fetcher --fetch-ir")
-	fmt.Println("  ./prefix-fetcher --fetch-cn")
-	fmt.Println("  ./prefix-fetcher --fetch-ir --fetch-cn")
 	fmt.Println()
 	fmt.Println("Output files:")
 	fmt.Println("  ir_prefixes_v4.txt, ir_prefixes_v6.txt")
 	fmt.Println("  cn_prefixes_v4.txt, cn_prefixes_v6.txt")
+	fmt.Println("  ru_prefixes_v4.txt, ru_prefixes_v6.txt")
 }

@@ -57,45 +57,63 @@ var (
 	}
 )
 
-// Maps countries to their authoritative RIR based on geographical coverage.
+// Maps countries to their primary RIR for reference (now fetches from all RIRs for completeness).
 var CountryToRIR = map[string]RIR{
 	"IR": RIPE_NCC, // Iran - Middle East (RIPE NCC coverage)
 	"CN": APNIC,    // China - Asia-Pacific (APNIC coverage)
+	"RU": RIPE_NCC, // Russia - Europe/Central Asia (RIPE NCC coverage)
 }
 
 func NewMultiRIRASNFetcher() *MultiRIRASNFetcher {
 	return &MultiRIRASNFetcher{
 		httpClient: &http.Client{
-			Timeout: 60 * time.Second,
+			Timeout: 120 * time.Second, // Increased timeout for fetching from all RIRs
 		},
 	}
 }
 
 func (f *MultiRIRASNFetcher) FetchASNsForCountry(countryCode string) ([]int, error) {
-	rir, exists := CountryToRIR[countryCode]
-	if !exists {
-		return nil, fmt.Errorf("no RIR mapping found for country code: %s", countryCode)
+	// Get all RIRs for comprehensive coverage
+	rirs := []RIR{RIPE_NCC, APNIC, ARIN, LACNIC, AFRINIC}
+
+	fmt.Printf("Fetching ASNs for %s from all RIRs for comprehensive coverage\n", countryCode)
+
+	asnSet := make(map[int]bool) // Use map for deduplication
+
+	for _, rir := range rirs {
+		fmt.Printf("Checking %s (%s)...\n", rir.Name, rir.URL)
+
+		records, err := f.fetchDelegatedRecords(rir.URL)
+		if err != nil {
+			fmt.Printf("Warning: Failed to fetch from %s: %v\n", rir.Name, err)
+			continue // Continue with other RIRs even if one fails
+		}
+
+		asns := f.extractASNsForCountry(records, countryCode)
+		fmt.Printf("Found %d ASNs for %s from %s\n", len(asns), countryCode, rir.Name)
+
+		// Add to set for deduplication
+		for _, asn := range asns {
+			asnSet[asn] = true
+		}
 	}
 
-	fmt.Printf("Fetching ASNs for %s from %s (%s)\n", countryCode, rir.Name, rir.URL)
-
-	records, err := f.fetchDelegatedRecords(rir.URL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch delegated records from %s: %w", rir.Name, err)
+	// Convert set back to sorted slice
+	result := make([]int, 0, len(asnSet))
+	for asn := range asnSet {
+		result = append(result, asn)
 	}
+	sort.Ints(result)
 
-	asns := f.extractASNsForCountry(records, countryCode)
-	sort.Ints(asns)
-
-	fmt.Printf("Found %d ASNs for %s from %s\n", len(asns), countryCode, rir.Name)
-	return asns, nil
+	fmt.Printf("Total unique ASNs for %s across all RIRs: %d\n", countryCode, len(result))
+	return result, nil
 }
 
-// Downloads ASN data for both Iran and China in parallel.
-func (f *MultiRIRASNFetcher) FetchIRAndCNASNs() (map[string][]int, error) {
+// Downloads ASN data for Iran, China, and Russia from all RIRs.
+func (f *MultiRIRASNFetcher) FetchAllSupportedCountries() (map[string][]int, error) {
 	result := make(map[string][]int)
 
-	countries := []string{"IR", "CN"}
+	countries := GetSupportedCountries()
 
 	for _, country := range countries {
 		asns, err := f.FetchASNsForCountry(country)

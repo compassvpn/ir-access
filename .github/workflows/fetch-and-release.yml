@@ -25,10 +25,10 @@ jobs:
         run: go mod tidy
 
       - name: Fetch IR prefixes
-        run: go run . --fetch-ir --verbose
+        run: go run . --fetch-ir
 
       - name: Fetch CN prefixes
-        run: go run . --fetch-cn --verbose
+        run: go run . --fetch-cn
 
       - name: Set release variables
         run: |

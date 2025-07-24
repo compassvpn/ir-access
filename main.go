@@ -21,6 +21,7 @@ func main() {
 	fs := ff.NewFlagSet(appName)
 	fetchIR := fs.BoolLong("fetch-ir", "Fetch Iranian IP prefixes from bgp.tools")
 	fetchCN := fs.BoolLong("fetch-cn", "Fetch Chinese IP prefixes from bgp.tools")
+	fetchRU := fs.BoolLong("fetch-ru", "Fetch Russian IP prefixes from bgp.tools")
 	verbose := fs.Bool('v', "verbose", "Enable verbose logging")
 	showVersion := fs.BoolLong("version", "Show version information")
 
@@ -48,8 +49,10 @@ func main() {
 		fetch.FetchIR(logger)
 	case *fetchCN:
 		fetch.FetchCN(logger)
+	case *fetchRU:
+		fetch.FetchRU(logger)
 	default:
-		fmt.Fprintf(os.Stderr, "error: specify --fetch-ir or --fetch-cn\n")
+		fmt.Fprintf(os.Stderr, "error: specify --fetch-ir, --fetch-cn, or --fetch-ru\n")
 		fmt.Fprintf(os.Stderr, "%s\n", ffhelp.Flags(fs))
 		os.Exit(1)
 	}

@@ -1,4 +1,4 @@
-name: Fetch and Release Prefixes
+name: Fetch and Release
 
 on:
   workflow_dispatch:
@@ -47,6 +47,8 @@ jobs:
             ir_prefixes_v6.txt
             cn_prefixes_v4.txt
             cn_prefixes_v6.txt
+          body: |
+            Auto Updated at ${{ env.RELEASE_DATE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

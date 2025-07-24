@@ -11,10 +11,26 @@ import (
 	"time"
 )
 
-// RIR represents a Regional Internet Registry
+// Registry endpoint with its official delegated file URL.
 type RIR struct {
 	Name string
 	URL  string
+}
+
+// Parsed entry from an RIR's pipe-delimited allocation file.
+type DelegatedRecord struct {
+	Registry string // RIR name
+	CC       string // Country code
+	Type     string // Record type (asn, ipv4, ipv6)
+	Start    string // Start value
+	Value    string // Count or size
+	Date     string // Allocation date
+	Status   string // Allocation status
+}
+
+// Downloads and parses ASN data from multiple RIR sources.
+type MultiRIRASNFetcher struct {
+	httpClient *http.Client
 }
 
 // Well-known RIR delegated file URLs
@@ -41,29 +57,12 @@ var (
 	}
 )
 
-// Country to RIR mapping based on geographical coverage
+// Maps countries to their authoritative RIR based on geographical coverage.
 var CountryToRIR = map[string]RIR{
 	"IR": RIPE_NCC, // Iran - Middle East (RIPE NCC coverage)
 	"CN": APNIC,    // China - Asia-Pacific (APNIC coverage)
 }
 
-// DelegatedRecord represents a single record from RIR delegated file
-type DelegatedRecord struct {
-	Registry string // ripe, apnic, arin, etc.
-	CC       string // country code (IR, CN)
-	Type     string // asn, ipv4, ipv6
-	Start    string // starting number/address
-	Value    string // count/size
-	Date     string // allocation date (YYYYMMDD)
-	Status   string // allocated, assigned, etc.
-}
-
-// MultiRIRASNFetcher handles fetching ASNs from multiple RIR delegated files
-type MultiRIRASNFetcher struct {
-	httpClient *http.Client
-}
-
-// NewMultiRIRASNFetcher creates a new multi-RIR ASN fetcher
 func NewMultiRIRASNFetcher() *MultiRIRASNFetcher {
 	return &MultiRIRASNFetcher{
 		httpClient: &http.Client{
@@ -72,7 +71,6 @@ func NewMultiRIRASNFetcher() *MultiRIRASNFetcher {
 	}
 }
 
-// FetchASNsForCountry fetches ASN allocations for a specific country
 func (f *MultiRIRASNFetcher) FetchASNsForCountry(countryCode string) ([]int, error) {
 	rir, exists := CountryToRIR[countryCode]
 	if !exists {
@@ -93,7 +91,7 @@ func (f *MultiRIRASNFetcher) FetchASNsForCountry(countryCode string) ([]int, err
 	return asns, nil
 }
 
-// FetchIRAndCNASNs fetches ASN allocations for both Iran and China
+// Downloads ASN data for both Iran and China in parallel.
 func (f *MultiRIRASNFetcher) FetchIRAndCNASNs() (map[string][]int, error) {
 	result := make(map[string][]int)
 
@@ -110,7 +108,6 @@ func (f *MultiRIRASNFetcher) FetchIRAndCNASNs() (map[string][]int, error) {
 	return result, nil
 }
 
-// fetchDelegatedRecords downloads and parses delegated records from RIR
 func (f *MultiRIRASNFetcher) fetchDelegatedRecords(url string) ([]DelegatedRecord, error) {
 	resp, err := f.httpClient.Get(url)
 	if err != nil {
@@ -125,7 +122,7 @@ func (f *MultiRIRASNFetcher) fetchDelegatedRecords(url string) ([]DelegatedRecor
 	return f.parseDelegatedFile(resp.Body)
 }
 
-// parseDelegatedFile parses the RIR delegated file format
+// Parses the standard RIR delegated file format (pipe-delimited).
 func (f *MultiRIRASNFetcher) parseDelegatedFile(reader io.Reader) ([]DelegatedRecord, error) {
 	var records []DelegatedRecord
 	scanner := bufio.NewScanner(reader)
@@ -143,7 +140,6 @@ func (f *MultiRIRASNFetcher) parseDelegatedFile(reader io.Reader) ([]DelegatedRe
 			continue
 		}
 
-		// Parse delegated record
 		record, err := f.parseDelegatedRecord(line)
 		if err != nil {
 			// Skip malformed lines rather than failing completely
@@ -160,7 +156,6 @@ func (f *MultiRIRASNFetcher) parseDelegatedFile(reader io.Reader) ([]DelegatedRe
 	return records, nil
 }
 
-// parseDelegatedRecord parses a single delegated record line
 func (f *MultiRIRASNFetcher) parseDelegatedRecord(line string) (DelegatedRecord, error) {
 	parts := strings.Split(line, "|")
 	if len(parts) < 7 {
@@ -178,7 +173,7 @@ func (f *MultiRIRASNFetcher) parseDelegatedRecord(line string) (DelegatedRecord,
 	}, nil
 }
 
-// extractASNsForCountry extracts ASN numbers for a specific country from delegated records
+// Extracts valid public ASNs from delegated records, expanding ranges.
 func (f *MultiRIRASNFetcher) extractASNsForCountry(records []DelegatedRecord, countryCode string) []int {
 	var asns []int
 
@@ -193,22 +188,19 @@ func (f *MultiRIRASNFetcher) extractASNsForCountry(records []DelegatedRecord, co
 			continue
 		}
 
-		// Parse starting ASN
 		startASN, err := strconv.Atoi(record.Start)
 		if err != nil {
 			continue
 		}
 
-		// Parse count of ASNs
 		count, err := strconv.Atoi(record.Value)
 		if err != nil {
 			continue
 		}
 
-		// Add all ASNs in the range
+		// Expand ASN ranges and filter out private/reserved numbers
 		for i := 0; i < count; i++ {
 			asn := startASN + i
-			// Filter out private ASNs and invalid ranges
 			if f.isValidPublicASN(asn) {
 				asns = append(asns, asn)
 			}
@@ -218,12 +210,11 @@ func (f *MultiRIRASNFetcher) extractASNsForCountry(records []DelegatedRecord, co
 	return asns
 }
 
-// isValidPublicASN checks if an ASN is a valid public ASN
+// Validates ASN against IANA reservations and private ranges.
 func (f *MultiRIRASNFetcher) isValidPublicASN(asn int) bool {
 	// Filter out reserved and private ASN ranges
 	// See: https://www.iana.org/assignments/as-numbers/as-numbers.xhtml
 
-	// Reserved ranges to exclude:
 	if asn == 0 {
 		return false // Reserved
 	}
@@ -254,13 +245,11 @@ func (f *MultiRIRASNFetcher) isValidPublicASN(asn int) bool {
 	return false
 }
 
-// GetRIRForCountry returns the RIR responsible for a country
 func GetRIRForCountry(countryCode string) (RIR, bool) {
 	rir, exists := CountryToRIR[countryCode]
 	return rir, exists
 }
 
-// GetSupportedCountries returns the list of supported country codes
 func GetSupportedCountries() []string {
 	countries := make([]string, 0, len(CountryToRIR))
 	for cc := range CountryToRIR {
